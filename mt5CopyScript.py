@@ -18,7 +18,7 @@ SLAVE_LOGIN = int(os.getenv("SLAVE_LOGIN", 0))
 SLAVE_PASSWORD = os.getenv("SLAVE_PASSWORD", "")
 SLAVE_SERVER = os.getenv("SLAVE_SERVER", "")
 
-def connect_to_mt5(path, login=None, password=None, server=None):
+def connect_and_login(path, login=None, password=None, server=None):
     if not mt5.initialize(path=path):
         print(f"❌ Failed to initialize MT5 at {path}")
         return False
