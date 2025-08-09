@@ -18,18 +18,28 @@ SLAVE_LOGIN = int(os.getenv("SLAVE_LOGIN", 0))
 SLAVE_PASSWORD = os.getenv("SLAVE_PASSWORD", "")
 SLAVE_SERVER = os.getenv("SLAVE_SERVER", "")
 
-def connect_and_login(path, login, password, server):
+def connect_to_mt5(path, login=None, password=None, server=None):
     if not mt5.initialize(path=path):
         print(f"❌ Failed to initialize MT5 at {path}")
-        sys.exit()
+        return False
 
-    authorized = mt5.login(login, password, server)
-    if not authorized:
-        print(f"❌ Failed to log in: {login} on {server}")
-        sys.exit()
+    account_info = mt5.account_info()
+    if account_info is not None:
+        print(f"✅ Already logged in to account {account_info.login} on server {account_info.server}")
+        return True
 
-    print(f"✅ Logged in: {login} on {server}")
-    return True
+    if login and password and server:
+        print(f"🔑 Logging in to account {login}...")
+        if mt5.login(login=login, password=password, server=server):
+            print("✅ Login successful")
+            return True
+        else:
+            print(f"❌ Login failed for account {login}")
+            return False
+
+    print("⚠️ No account logged in and no credentials provided")
+    return False
+
 
 def shutdown_mt5():
     mt5.shutdown()
