@@ -24,6 +24,9 @@ def launch_mt5_with_login(exe_path, login, password, server):
     if not login or not password or not server:
         print(f"⚠️ Missing login details for {exe_path}")
         return
+    
+    print(login)
+    print(password)
 
     config_path = os.path.join(os.path.dirname(exe_path), "login.ini")
     with open(config_path, "w") as f:
