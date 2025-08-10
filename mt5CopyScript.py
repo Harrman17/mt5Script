@@ -1,12 +1,9 @@
 import MetaTrader5 as mt5
 import time
-import sys
 import os
-import subprocess
+import sys
 
 # === CONFIG ===
-MASTER_PATH = r"C:\Users\Administrator\Desktop\terminals\master\terminal64.exe"
-SLAVE_PATH = r"C:\Users\Administrator\Desktop\terminals\slave1\terminal64.exe"
 COPY_INTERVAL = 1  # seconds
 
 # Credentials from env vars
@@ -19,58 +16,24 @@ SLAVE_PASSWORD = os.getenv("SLAVE_PASSWORD", "")
 SLAVE_SERVER = os.getenv("SLAVE_SERVER", "")
 
 
-def launch_mt5_with_login(exe_path, login, password, server):
-    """Create config file and launch MT5 logged in."""
-    if not login or not password or not server:
-        print(f"⚠️ Missing login details for {exe_path}")
-        return
-    
-    print(f"📝 Login details for {exe_path}:")
-    print(f"  Login: {login}")
-    print(f"  Password: {password}")
-    print(f"  Server: {server}")
-
-    config_path = os.path.join(os.path.dirname(exe_path), "login.ini")
-    with open(config_path, "w") as f:
-        f.write(f"Login={login}\n")
-        f.write(f"Password={password}\n")
-        f.write(f"Server={server}\n")
-        f.write("AutoConfiguration=1\n")
-        f.write("EnableNews=0\n")
-
-    print(f"🚀 Launching MT5 at {exe_path} with /config:{config_path}")
-    subprocess.Popen([exe_path, f"/config:{config_path}"])
-    time.sleep(5)  # wait for MT5 to initialize
-
-
-def connect_and_login(path):
-    """Connect to MT5 — assumes it's already running/logged in."""
-    if not mt5.initialize(path=path):
-        print(f"❌ Failed to initialize MT5 at {path}")
-        return False
-
-    account_info = mt5.account_info()
-    if account_info:
-        print(f"✅ Connected: {account_info.login} @ {account_info.server}")
-        return True
-    else:
-        print("❌ MT5 initialized but not logged in.")
-        return False
-
-
-def shutdown_mt5():
+def get_positions_for_account(login, password, server):
+    if not mt5.initialize(login=login, password=password, server=server):
+        print(f"❌ MT5 init failed for login {login}: {mt5.last_error()}")
+        return []
+    positions = mt5.positions_get() or []
     mt5.shutdown()
-
-
-def get_positions():
-    return mt5.positions_get() or []
+    return positions
 
 
 def copy_position_to_slave(position):
     symbol = position.symbol
     volume = position.volume
     order_type = position.type
-    price = mt5.symbol_info_tick(symbol).ask if order_type == 0 else mt5.symbol_info_tick(symbol).bid
+    price_tick = mt5.symbol_info_tick(symbol)
+    if price_tick is None:
+        print(f"❌ Failed to get tick for symbol {symbol}")
+        return
+    price = price_tick.ask if order_type == mt5.ORDER_TYPE_BUY else price_tick.bid
 
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
@@ -89,18 +52,22 @@ def copy_position_to_slave(position):
     if result.retcode != mt5.TRADE_RETCODE_DONE:
         print(f"❌ Trade failed: retcode={result.retcode}, message: {result.comment}")
     else:
-        print(f"✅ Trade copied: {symbol}, {volume} lots, {'BUY' if order_type == 0 else 'SELL'}")
+        print(f"✅ Trade copied: {symbol}, {volume} lots, {'BUY' if order_type == mt5.ORDER_TYPE_BUY else 'SELL'}")
 
 
 def clear_slave_open_positions():
-    positions = get_positions()
-    for p in positions:
-        close_position(p)
+    positions = mt5.positions_get() or []
+    for position in positions:
+        close_position(position)
 
 
 def close_position(position):
     order_type = mt5.ORDER_TYPE_SELL if position.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
-    price = mt5.symbol_info_tick(position.symbol).bid if order_type == mt5.ORDER_TYPE_SELL else mt5.symbol_info_tick(position.symbol).ask
+    price_tick = mt5.symbol_info_tick(position.symbol)
+    if price_tick is None:
+        print(f"❌ Failed to get tick for symbol {position.symbol}")
+        return
+    price = price_tick.bid if order_type == mt5.ORDER_TYPE_SELL else price_tick.ask
 
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
@@ -115,7 +82,12 @@ def close_position(position):
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": mt5.ORDER_FILLING_FOK,
     }
-    mt5.order_send(request)
+
+    result = mt5.order_send(request)
+    if result.retcode != mt5.TRADE_RETCODE_DONE:
+        print(f"❌ Close position failed: retcode={result.retcode}, message: {result.comment}")
+    else:
+        print(f"✅ Closed position {position.ticket} on {position.symbol}")
 
 
 def positions_to_dict(positions):
@@ -123,33 +95,36 @@ def positions_to_dict(positions):
 
 
 def main():
-    # Step 1 — Launch MT5 terminals logged in
-    launch_mt5_with_login(MASTER_PATH, MASTER_LOGIN, MASTER_PASSWORD, MASTER_SERVER)
-    launch_mt5_with_login(SLAVE_PATH, SLAVE_LOGIN, SLAVE_PASSWORD, SLAVE_SERVER)
+    print("🚀 Trade copier starting...")
 
-    # Step 2 — Start trade copier loop
     while True:
-        connect_and_login(MASTER_PATH)
-        master_positions = get_positions()
+        # Get master positions
+        master_positions = get_positions_for_account(MASTER_LOGIN, MASTER_PASSWORD, MASTER_SERVER)
+        if not master_positions:
+            print("⚠️ No master positions found or failed to connect.")
         master_snapshot = positions_to_dict(master_positions)
-        shutdown_mt5()
 
-        connect_and_login(SLAVE_PATH)
-        slave_positions = get_positions()
+        # Get slave positions
+        slave_positions = get_positions_for_account(SLAVE_LOGIN, SLAVE_PASSWORD, SLAVE_SERVER)
+        if not slave_positions:
+            print("⚠️ No slave positions found or failed to connect.")
         slave_snapshot = positions_to_dict(slave_positions)
 
         if master_snapshot != slave_snapshot:
             print("🔁 Desync detected — syncing now")
-            clear_slave_open_positions()
-            for p in master_positions:
-                copy_position_to_slave(p)
+
+            if not mt5.initialize(login=SLAVE_LOGIN, password=SLAVE_PASSWORD, server=SLAVE_SERVER):
+                print(f"❌ Failed to init slave terminal for syncing: {mt5.last_error()}")
+            else:
+                clear_slave_open_positions()
+                for p in master_positions:
+                    copy_position_to_slave(p)
+                mt5.shutdown()
         else:
             print("✅ Slave is already in sync with master")
 
-        shutdown_mt5()
         time.sleep(COPY_INTERVAL)
 
 
 if __name__ == "__main__":
-    print("🚀 Trade copier starting...")
     main()
