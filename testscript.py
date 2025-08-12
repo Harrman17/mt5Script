@@ -5,7 +5,7 @@ import multiprocessing
 import sys
 
 MASTER_PATH = r"C:\Users\Administrator\Desktop\terminals\master\terminal64.exe"
-SLAVE_PATH = r"C:\Users\Administrator\Desktop\terminals\slave\terminal64.exe"
+SLAVE_PATH = r"C:\Users\Administrator\Desktop\terminals\slave1\terminal64.exe"
 
 MASTER_LOGIN = 5038347062
 MASTER_PASSWORD = "Wa@nAp6f"
