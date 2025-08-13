@@ -27,25 +27,34 @@ def handle_login_prompt(window_title):
     try:
         print(f"🔐 Looking for login prompt for: {window_title}")
         
-        # Look for login-related windows
-        login_windows = gw.getWindowsWithTitle("Login")
-        if not login_windows:
-            login_windows = gw.getWindowsWithTitle("MetaTrader")
+        # Look for various login-related windows
+        login_keywords = ["login", "metatrader", "open an account", "account", "demo", "real"]
+        login_windows = []
         
-        for login_window in login_windows:
-            if "login" in login_window.title.lower() or "metatrader" in login_window.title.lower():
-                print(f"Found login window: {login_window.title}")
+        all_windows = gw.getAllTitles()
+        for window_title in all_windows:
+            if any(keyword in window_title.lower() for keyword in login_keywords):
+                login_windows.append(window_title)
+        
+        for login_window_title in login_windows:
+            print(f"Found login-related window: {login_window_title}")
+            
+            try:
+                login_window = gw.getWindowsWithTitle(login_window_title)[0]
                 
                 # Activate the login window
                 login_window.activate()
                 time.sleep(1)
                 
-                # Try to find and click the OK/Login button
+                # Try to find and click the OK/Login/Close button
                 # Common positions for OK button in login dialogs
                 ok_positions = [
                     (login_window.width // 2, login_window.height - 50),  # Center bottom
                     (login_window.width - 100, login_window.height - 50),  # Bottom right
                     (login_window.width // 2, login_window.height // 2 + 50),  # Center
+                    (login_window.width // 2, login_window.height // 2),  # Center
+                    (login_window.width - 80, login_window.height - 30),  # Bottom right corner
+                    (login_window.width // 2, login_window.height - 30),  # Bottom center
                 ]
                 
                 for pos in ok_positions:
@@ -61,10 +70,25 @@ def handle_login_prompt(window_title):
                 pyautogui.press('enter')
                 time.sleep(1)
                 
-                print(f"✅ Attempted to handle login prompt for: {login_window.title}")
-                return True
+                # Try Escape key to close dialogs
+                pyautogui.press('escape')
+                time.sleep(1)
+                
+                # Try clicking the X (close) button in top-right corner
+                try:
+                    pyautogui.click(login_window.left + login_window.width - 20, login_window.top + 10)
+                    print(f"Clicked X button to close window")
+                    time.sleep(1)
+                except Exception:
+                    pass
+                
+                print(f"✅ Attempted to handle login prompt for: {login_window_title}")
+                
+            except Exception as e:
+                print(f"⚠️  Could not handle window {login_window_title}: {e}")
+                continue
         
-        return False
+        return True
         
     except Exception as e:
         print(f"❌ Failed to handle login prompt: {e}")
@@ -194,7 +218,7 @@ def verify_autotrading_enabled(account_name):
         print(f"⚠️  Could not verify AutoTrading status: {e}")
         return False
 
-def wait_for_login_completion(terminal_title, max_wait_time=60):
+def wait_for_login_completion(terminal_title, max_wait_time=25):
     """Wait for MT5 terminal to complete login process"""
     try:
         print(f"⏳ Waiting for login completion for: {terminal_title}")
@@ -202,22 +226,27 @@ def wait_for_login_completion(terminal_title, max_wait_time=60):
         start_time = time.time()
         while time.time() - start_time < max_wait_time:
             # Look for login-related windows
-            login_windows = gw.getWindowsWithTitle("Login")
-            if not login_windows:
-                login_windows = gw.getWindowsWithTitle("MetaTrader")
+            login_keywords = ["login", "metatrader", "open an account", "account", "demo", "real"]
+            login_windows = []
+            
+            all_windows = gw.getAllTitles()
+            for window_title in all_windows:
+                if any(keyword in window_title.lower() for keyword in login_keywords):
+                    login_windows.append(window_title)
             
             # Check if there are any login dialogs still open
-            login_dialogs_found = False
-            for login_window in login_windows:
-                if "login" in login_window.title.lower() or "metatrader" in login_window.title.lower():
-                    login_dialogs_found = True
-                    break
+            login_dialogs_found = len(login_windows) > 0
             
             if not login_dialogs_found:
                 print(f"✅ Login appears to be completed for: {terminal_title}")
                 return True
             
             print(f"⏳ Still waiting for login to complete... ({int(time.time() - start_time)}s)")
+            print(f"   Found login windows: {login_windows}")
+            
+            # Try to handle any remaining dialogs
+            handle_login_prompt(terminal_title)
+            
             time.sleep(2)
         
         print(f"⚠️  Login timeout reached for: {terminal_title}")
@@ -400,7 +429,22 @@ def enable_algo_trading_via_ui(terminal_title, account_login=None, terminal_path
         target_window.activate()
         time.sleep(2)
         
-        # Method 1: Try keyboard shortcut (Ctrl+Alt+T is common for AutoTrading toggle)
+        # Method 1: Try Ctrl+E (new keyboard shortcut for AutoTrading toggle)
+        try:
+            print(f"Trying keyboard shortcut Ctrl+E for: {target_window.title}")
+            pyautogui.hotkey('ctrl', 'e')
+            time.sleep(1)
+            print(f"✅ Attempted keyboard shortcut Ctrl+E for AutoTrading: {target_window.title}")
+            
+            # Check if AutoTrading is now enabled
+            if check_autotrading_status(terminal_path, login, password, server):
+                print(f"✅ SUCCESS! AutoTrading enabled via Ctrl+E")
+                return True
+                
+        except Exception as e:
+            print(f"⚠️  Could not use keyboard shortcut Ctrl+E: {e}")
+        
+        # Method 2: Try keyboard shortcut (Ctrl+Alt+T is common for AutoTrading toggle)
         try:
             print(f"Trying keyboard shortcut Ctrl+Alt+T for: {target_window.title}")
             pyautogui.hotkey('ctrl', 'alt', 't')
@@ -415,11 +459,11 @@ def enable_algo_trading_via_ui(terminal_title, account_login=None, terminal_path
         except Exception as e:
             print(f"⚠️  Could not use keyboard shortcut: {e}")
         
-        # Method 2: Try to find and click the AutoTrading button
+        # Method 3: Try to find and click the AutoTrading button
         if find_and_click_autotrading_button(target_window, terminal_path, login, password, server):
             return True
         
-        # Method 3: Try alternative keyboard shortcuts
+        # Method 4: Try alternative keyboard shortcuts
         try:
             print(f"Trying alternative keyboard shortcuts for: {target_window.title}")
             # Try F7 (common for AutoTrading toggle)
@@ -453,7 +497,7 @@ def enable_algo_trading_via_ui(terminal_title, account_login=None, terminal_path
         except Exception as e:
             print(f"⚠️  Could not use alternative keyboard shortcuts: {e}")
         
-        # Method 4: Try to access Tools menu
+        # Method 5: Try to access Tools menu
         try:
             print(f"Trying to access Tools menu for: {target_window.title}")
             # Click Tools menu (usually at top-left)
