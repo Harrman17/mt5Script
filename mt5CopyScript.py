@@ -8,6 +8,7 @@ import configparser
 import winreg
 import pyautogui
 import pygetwindow as gw
+import requests
 
 MASTER_PATH = r"C:\Users\Administrator\Desktop\terminals\master\terminal64.exe"
 SLAVE_PATH = r"C:\Users\Administrator\Desktop\terminals\slave1\terminal64.exe"
@@ -853,8 +854,30 @@ def copy_trading_process():
         
         time.sleep(COPY_INTERVAL)
 
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1405657359438712903/3SR_iC1jWXOckZKRLv73Gg_l0_3v02v1vEZVwOclXfupq-jN2pUt3GFqLYzTNJZUjFCx"
+
+def send_discord_notification(message):
+    """Send simple notification to Discord"""
+    try:
+        payload = {
+            "content": message,
+            "username": "MT5 Copy Trading Bot"
+        }
+        
+        response = requests.post(DISCORD_WEBHOOK_URL, json=payload)
+        if response.status_code == 204:
+            print(f"✅ Discord notification sent: {message}")
+        else:
+            print(f"❌ Failed to send Discord notification: {response.status_code}")
+    except Exception as e:
+        print(f"❌ Failed to send Discord notification: {e}")
+
+
 if __name__ == "__main__":
     print("🚀 Starting MT5 Copy Trading Setup...")
+    
+    # Send Discord notification that script started
+    send_discord_notification("🚀 MT5 Copy Trading script started")
     
     # Step 1: Setup Master Terminal
     master_success = setup_single_terminal(
@@ -862,6 +885,7 @@ if __name__ == "__main__":
     )
     
     if not master_success:
+        send_discord_notification("❌ Failed to setup Master terminal")
         print("❌ Failed to setup Master terminal. Exiting.")
         sys.exit(1)
     
@@ -871,6 +895,7 @@ if __name__ == "__main__":
     )
     
     if not slave_success:
+        send_discord_notification("❌ Failed to setup Slave terminal")
         print("❌ Failed to setup Slave terminal. Exiting.")
         sys.exit(1)
     
@@ -879,11 +904,16 @@ if __name__ == "__main__":
     print("🎯 Both terminals are ready! Starting copy trading...")
     print(f"{'='*60}")
     
+    # Send Discord notification that everything is ready
+    send_discord_notification("✅ MT5 Copy Trading ready - Both terminals active!")
+    
     try:
         copy_trading_process()
     except KeyboardInterrupt:
+        send_discord_notification("⏹️ MT5 Copy Trading stopped by user")
         print("\nCopy trading stopped by user")
         mt5.shutdown()
     except Exception as e:
+        send_discord_notification(f"❌ MT5 Copy Trading error: {str(e)}")
         print(f"Error: {e}")
         mt5.shutdown()
