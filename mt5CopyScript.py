@@ -442,7 +442,7 @@ def copy_position_to_slave(position):
         print(f"❌ Cannot get price for {symbol}, skipping trade")
         return False
 
-    request = {
+    request = { 
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": symbol,
         "volume": volume,
@@ -502,8 +502,9 @@ def copy_trading_process():
     """Main copy trading process that runs continuously"""
     print("Starting copy trading process...")
     
-    # Track previously seen master positions
-    previous_master_positions = {}
+    # Initialize baseline state - track existing positions when script starts
+    baseline_master_positions = {}
+    baseline_initialized = False
     
     while True:
         try:
@@ -524,10 +525,31 @@ def copy_trading_process():
                 slave_positions = get_master_positions()
                 slave_snapshot = positions_to_dict(slave_positions)
 
-                # Find new positions (positions in master that weren't there before)
+                # Initialize baseline on first successful connection
+                if not baseline_initialized:
+                    print("📊 Initializing baseline - recording existing positions...")
+                    baseline_master_positions = master_snapshot.copy()
+                    baseline_initialized = True
+                    print(f"📊 Baseline initialized with {len(baseline_master_positions)} existing positions")
+                    
+                    # Show existing positions for reference
+                    if baseline_master_positions:
+                        print("📋 Existing positions (will NOT be copied):")
+                        for pos_key in baseline_master_positions.keys():
+                            symbol, volume, order_type = pos_key
+                            print(f"   - {symbol}: {volume} lots ({'BUY' if order_type == 0 else 'SELL'})")
+                    else:
+                        print("📋 No existing positions found")
+                    
+                    # Continue to next iteration without copying anything
+                    mt5.shutdown()
+                    time.sleep(COPY_INTERVAL)
+                    continue
+
+                # Find truly new positions (positions in master that weren't in baseline)
                 new_positions = {}
                 for pos_key, master_ticket in master_snapshot.items():
-                    if pos_key not in previous_master_positions:
+                    if pos_key not in baseline_master_positions:
                         new_positions[pos_key] = master_ticket
 
                 if new_positions:
@@ -536,12 +558,14 @@ def copy_trading_process():
                     for p in master_positions:
                         pos_key = (p.symbol, p.volume, p.type)
                         if pos_key in new_positions:
+                            print(f"📈 Copying new position: {p.symbol} {p.volume} lots ({'BUY' if p.type == 0 else 'SELL'})")
                             copy_position_to_slave(p)
                 else:
                     print("✅ No new positions to copy")
 
-                # Update previous master positions
-                previous_master_positions = master_snapshot.copy()
+                # Update baseline to include any new positions we just copied
+                # This prevents re-copying the same position if the script restarts
+                baseline_master_positions.update(new_positions)
                 
                 mt5.shutdown()
             else:
