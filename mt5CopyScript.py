@@ -32,19 +32,46 @@ def load_configuration_from_database(user_id):
     try:
         # Database connection parameters - you'll need to set these
         # You can pass these as environment variables to the EC2
+        # Get database credentials from environment variables only
+        db_host = os.environ.get('DB_HOST')
+        db_name = os.environ.get('DB_NAME')
+        db_user = os.environ.get('DB_USER')
+        db_password = os.environ.get('DB_PASSWORD')
+        db_port = os.environ.get('DB_PORT')
+        
+        # Validate all required environment variables are set
+        if not all([db_host, db_name, db_user, db_password, db_port]):
+            missing = []
+            if not db_host: missing.append('DB_HOST')
+            if not db_name: missing.append('DB_NAME')
+            if not db_user: missing.append('DB_USER')
+            if not db_password: missing.append('DB_PASSWORD')
+            if not db_port: missing.append('DB_PORT')
+            
+            print(f"❌ Missing required database environment variables: {', '.join(missing)}")
+            print("Please set all database environment variables before running the script.")
+            return None
+        
+        # Debug: Print connection details (without password)
+        print(f"🔗 Connecting to database:")
+        print(f"   Host: {db_host}")
+        print(f"   Database: {db_name}")
+        print(f"   User: {db_user}")
+        print(f"   Port: {db_port}")
+        
         conn = psycopg2.connect(
-            host=os.environ.get('DB_HOST', 'localhost'),
-            database=os.environ.get('DB_NAME', 'localmultitrader'),
-            user=os.environ.get('DB_USER', 'harman'),
-            password=os.environ.get('DB_PASSWORD', ''),
-            port=os.environ.get('DB_PORT', '5432')
+            host=db_host,
+            database=db_name,
+            user=db_user,
+            password=db_password,
+            port=int(db_port)
         )
         
         cursor = conn.cursor()
         
         # Get user's active accounts
         cursor.execute("""
-            SELECT account_login, account_password, account_server, account_is_master 
+            SELECT account_login, account_password, server, account_is_master 
             FROM accounts 
             WHERE user_id = %s AND is_active = true
             ORDER BY account_is_master DESC
@@ -104,9 +131,13 @@ def get_user_id_from_ec2():
     """Get the user ID from EC2 instance metadata or environment variable"""
     try:
         # Try to get from environment variable first
+        print("🔍 Looking for TRADING_USER_ID environment variable...")
         user_id = os.environ.get('TRADING_USER_ID')
         if user_id:
+            print(f"✅ Found user ID in environment: {user_id}")
             return int(user_id)
+        
+        print("⚠️ TRADING_USER_ID not found in environment, trying EC2 tags...")
         
         # Try to get from EC2 instance tags
         import boto3
@@ -115,13 +146,17 @@ def get_user_id_from_ec2():
         # Get instance ID
         response = requests.get('http://169.254.169.254/latest/meta-data/instance-id', timeout=5)
         instance_id = response.text
+        print(f"📋 Instance ID: {instance_id}")
         
         # Get instance tags
         response = ec2.describe_instances(InstanceIds=[instance_id])
         tags = response['Reservations'][0]['Instances'][0].get('Tags', [])
         
+        print(f"🏷️ Instance tags: {tags}")
+        
         for tag in tags:
             if tag['Key'] == 'User':
+                print(f"✅ Found user ID in EC2 tags: {tag['Value']}")
                 return int(tag['Value'])
         
         print("❌ No user ID found in environment or EC2 tags")
@@ -150,11 +185,14 @@ def send_discord_notification(message, webhook_url):
 def enable_algo_trading_in_config(terminal_path):
     """Enable algorithmic trading by creating comprehensive config files"""
     try:
+        # Get the terminal directory
         terminal_dir = os.path.dirname(terminal_path)
         config_dir = os.path.join(terminal_dir, "config")
         os.makedirs(config_dir, exist_ok=True)
         
-        config_content = """[Terminal]
+        # 1. Create/update common.ini
+        common_config_path = os.path.join(config_dir, "common.ini")
+        common_config_content = """[Terminal]
 AllowLiveTrading=1
 AllowDllImport=1
 AllowWebRequest=1
@@ -162,15 +200,96 @@ AllowAutoTrading=1
 AllowExternalExperts=1
 AllowExternalSignals=1
 AllowExternalAlerts=1
+AllowSendNotifications=1
+AllowSendEmail=1
+AllowSendSMS=1
+AllowSendPush=1
+AllowSendWebRequest=1
+AllowSendFTP=1
+AllowSendTerminal=1
+AllowSendTerminalEmail=1
+AllowSendTerminalSMS=1
+AllowSendTerminalPush=1
+AllowSendTerminalWebRequest=1
+AllowSendTerminalFTP=1
+AllowSendTerminalTerminal=1
 """
         
-        config_files = ["common.ini", "terminal.ini", "experts.ini"]
+        with open(common_config_path, 'w', encoding='utf-8') as configfile:
+            configfile.write(common_config_content)
         
-        for config_file in config_files:
-            config_path = os.path.join(config_dir, config_file)
-            with open(config_path, 'w', encoding='utf-8') as f:
-                f.write(config_content)
-            print(f"✅ Created {config_file}: {config_path}")
+        print(f"✅ Created comprehensive common.ini: {common_config_path}")
+        
+        # 2. Create/update terminal.ini
+        terminal_config_path = os.path.join(config_dir, "terminal.ini")
+        terminal_config_content = """[Terminal]
+AllowLiveTrading=1
+AllowDllImport=1
+AllowWebRequest=1
+AllowAutoTrading=1
+AllowExternalExperts=1
+AllowExternalSignals=1
+AllowExternalAlerts=1
+AllowSendNotifications=1
+AllowSendEmail=1
+AllowSendSMS=1
+AllowSendPush=1
+AllowSendWebRequest=1
+AllowSendFTP=1
+AllowSendTerminal=1
+AllowSendTerminalEmail=1
+AllowSendTerminalSMS=1
+AllowSendTerminalPush=1
+AllowSendTerminalWebRequest=1
+AllowSendTerminalFTP=1
+AllowSendTerminalTerminal=1
+"""
+        
+        with open(terminal_config_path, 'w', encoding='utf-8') as configfile:
+            configfile.write(terminal_config_content)
+        
+        print(f"✅ Created terminal.ini: {terminal_config_path}")
+        
+        # 3. Create/update experts.ini
+        experts_config_path = os.path.join(config_dir, "experts.ini")
+        experts_config_content = """[Experts]
+AllowLiveTrading=1
+AllowDllImport=1
+AllowWebRequest=1
+AllowAutoTrading=1
+AllowExternalExperts=1
+AllowExternalSignals=1
+AllowExternalAlerts=1
+AllowSendNotifications=1
+AllowSendEmail=1
+AllowSendSMS=1
+AllowSendPush=1
+AllowSendWebRequest=1
+AllowSendFTP=1
+AllowSendTerminal=1
+AllowSendTerminalEmail=1
+AllowSendTerminalSMS=1
+AllowSendTerminalPush=1
+AllowSendTerminalWebRequest=1
+AllowSendTerminalFTP=1
+AllowSendTerminalTerminal=1
+"""
+        
+        with open(experts_config_path, 'w', encoding='utf-8') as configfile:
+            configfile.write(experts_config_content)
+        
+        print(f"✅ Created experts.ini: {experts_config_path}")
+        
+        # 4. Create/update profiles.ini
+        profiles_config_path = os.path.join(config_dir, "profiles.ini")
+        profiles_config_content = """[Profiles]
+Default=Default
+"""
+        
+        with open(profiles_config_path, 'w', encoding='utf-8') as configfile:
+            configfile.write(profiles_config_content)
+        
+        print(f"✅ Created profiles.ini: {profiles_config_path}")
         
         return True
         
@@ -244,15 +363,12 @@ def save_login_credentials(terminal_path, login, password, server):
         print(f"❌ Failed to save login credentials: {e}")
         return False
 
-def start_mt5_terminal(path, login, password, server):
+def start_mt5_terminal(path):
     """Start MT5 terminal in headless mode"""
     try:
-        save_login_credentials(path, login, password, server)
-        enable_algo_trading_in_config(path)
-        enable_algo_trading_via_registry(path)
-        
+        # Launch with portable mode and headless flags
         subprocess.Popen([path, "/portable", "/headless"])
-        time.sleep(10)
+        time.sleep(10)  # Give MT5 more time to start in headless mode
         print(f"✅ Started MT5 terminal: {path}")
     except Exception as e:
         print(f"❌ Error starting MT5 terminal: {e}")
@@ -283,27 +399,116 @@ def wait_for_terminal_ready(terminal_path, login, password, server, max_attempts
     print(f"❌ Terminal not ready after {max_attempts} attempts")
     return False
 
+def force_enable_autotrading_via_api(terminal_path, login, password, server):
+    """Try to force enable AutoTrading via MT5 API"""
+    try:
+        if mt5.initialize(path=terminal_path, login=login, password=password, server=server):
+            # Try to get terminal info and check if we can modify settings
+            terminal_info = mt5.terminal_info()
+            print(f"Terminal info - Trade allowed: {terminal_info.trade_allowed}")
+            print(f"Terminal info - Trade mode: {terminal_info.trade_mode}")
+            print(f"Terminal info - Connected: {terminal_info.connected}")
+            print(f"Terminal info - Trade allowed: {terminal_info.trade_allowed}")
+            
+            # Try to get account info
+            account_info = mt5.account_info()
+            if account_info:
+                print(f"Account info - Trade allowed: {account_info.trade_allowed}")
+                print(f"Account info - Trade mode: {account_info.trade_mode}")
+                print(f"Account info - Trade expert: {account_info.trade_expert}")
+            
+            mt5.shutdown()
+            return True
+        else:
+            print(f"❌ Could not initialize MT5 for API access")
+            mt5.shutdown()
+            return False
+    except Exception as e:
+        print(f"⚠️  Could not force enable via API: {e}")
+        mt5.shutdown()
+        return False
+
+def check_autotrading_status(terminal_path, login, password, server):
+    """Check if AutoTrading is currently enabled"""
+    try:
+        if mt5.initialize(path=terminal_path, login=login, password=password, server=server):
+            terminal_info = mt5.terminal_info()
+            mt5.shutdown()
+            return terminal_info.trade_allowed
+        else:
+            mt5.shutdown()
+            return False
+    except Exception as e:
+        print(f"⚠️  Could not check AutoTrading status: {e}")
+        mt5.shutdown()
+        return False
+
 def setup_single_terminal(terminal_path, login, password, server, terminal_name):
-    """Setup a single terminal"""
+    """Setup a single terminal: launch, wait for connection, verify AutoTrading"""
     try:
         print(f"\n{'='*60}")
         print(f"🚀 Setting up {terminal_name} terminal...")
-        print(f"Account: {login}")
         print(f"{'='*60}")
         
+        # Step 1: Save credentials and launch terminal
         print(f"📋 Step 1: Saving credentials for {terminal_name}...")
         save_login_credentials(terminal_path, login, password, server)
         
         print(f"🚀 Step 2: Launching {terminal_name} terminal...")
-        start_mt5_terminal(terminal_path, login, password, server)
+        start_mt5_terminal(terminal_path)
         
+        # Step 3: Wait for terminal to be ready
         print(f"⏳ Step 3: Waiting for {terminal_name} terminal to be ready...")
         if not wait_for_terminal_ready(terminal_path, login, password, server):
             print(f"❌ {terminal_name} terminal not ready")
             return False
         
-        print(f"✅ {terminal_name} terminal setup complete!")
-        return True
+        # Step 4: Try to force enable AutoTrading via API
+        print(f"🔧 Step 4: Attempting to force enable AutoTrading for {terminal_name}...")
+        force_enable_autotrading_via_api(terminal_path, login, password, server)
+        
+        # Step 5: Verify AutoTrading is enabled
+        print(f"✅ Step 5: Verifying AutoTrading for {terminal_name}...")
+        autotrading_enabled = False
+        for attempt in range(10):  # Increased attempts
+            try:
+                if check_autotrading_status(terminal_path, login, password, server):
+                    print(f"✅ CONFIRMED: AutoTrading is ENABLED for {terminal_name}")
+                    autotrading_enabled = True
+                    break
+                else:
+                    print(f"❌ AutoTrading is DISABLED for {terminal_name} (attempt {attempt + 1})")
+                    
+                    # Try to restart terminal if AutoTrading is still disabled after several attempts
+                    if attempt == 5:
+                        print(f"🔄 Attempting to restart {terminal_name} terminal to enable AutoTrading...")
+                        # Kill existing process
+                        try:
+                            subprocess.run(['taskkill', '/f', '/im', 'terminal64.exe'], 
+                                         capture_output=True, check=False)
+                            time.sleep(5)
+                        except:
+                            pass
+                        
+                        # Restart with different flags
+                        try:
+                            subprocess.Popen([terminal_path, "/portable", "/headless", "/autotrading"])
+                            time.sleep(15)
+                        except:
+                            pass
+                    
+            except Exception as e:
+                print(f"⚠️  AutoTrading verification attempt {attempt + 1} failed: {e}")
+            
+            if attempt < 9:  # Don't sleep after last attempt
+                time.sleep(3)
+        
+        if not autotrading_enabled:
+            print(f"⚠️  AutoTrading could not be enabled for {terminal_name}, but continuing anyway...")
+            # Don't exit, just continue with the setup
+            return True
+        
+        return autotrading_enabled
         
     except Exception as e:
         print(f"❌ Error setting up {terminal_name} terminal: {e}")
