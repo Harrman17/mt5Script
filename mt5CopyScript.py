@@ -382,7 +382,7 @@ def start_mt5_terminal(path):
     except Exception as e:
         print(f"❌ Error starting MT5 terminal: {e}")
 
-def wait_for_terminal_ready(terminal_path, login, password, server, max_attempts=30):
+def wait_for_terminal_ready(terminal_path, login, password, server, max_attempts=5):
     """Wait for terminal to be ready and connected"""
     print(f"⏳ Waiting for terminal to be ready...")
     
