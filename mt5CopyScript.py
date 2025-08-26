@@ -14,6 +14,7 @@ import configparser
 import winreg
 import requests
 import json
+import psycopg2
 from datetime import datetime
 
 # Default paths and settings (non-account specific)
@@ -24,81 +25,111 @@ DEFAULT_CONFIG = {
     "DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/1405657359438712903/3SR_iC1jWXOckZKRLv73Gg_l0_3v02v1vEZVwOclXfupq-jN2pUt3GFqLYzTNJZUjFCx"
 }
 
-def load_configuration():
-    """Load configuration from the dynamic config file - no fallback accounts"""
-    config_file = "/home/ubuntu/copy_trading_config.py"
-    accounts_file = "/home/ubuntu/trading_accounts.json"
-    
+def load_configuration_from_database(user_id):
+    """Load configuration directly from the database"""
     config = DEFAULT_CONFIG.copy()
-    account_found = False
     
     try:
-        # Try to load from the Python config file first
-        if os.path.exists(config_file):
-            print(f"📋 Loading configuration from: {config_file}")
-            
-            # Execute the config file to get variables
-            exec_globals = {}
-            with open(config_file, 'r') as f:
-                exec(f.read(), exec_globals)
-            
-            # Update config with loaded values
-            for key in ['MASTER_LOGIN', 'MASTER_PASSWORD', 'MASTER_SERVER', 'SLAVE_LOGIN', 'SLAVE_PASSWORD', 'SLAVE_SERVER']:
-                if key in exec_globals:
-                    config[key] = exec_globals[key]
-                    print(f"✅ Loaded {key}: {exec_globals[key] if 'PASSWORD' not in key else '***'}")
-                    account_found = True
-            
-            # Load other config values
-            for key in DEFAULT_CONFIG.keys():
-                if key in exec_globals:
-                    config[key] = exec_globals[key]
+        # Database connection parameters - you'll need to set these
+        # You can pass these as environment variables to the EC2
+        conn = psycopg2.connect(
+            host=os.environ.get('DB_HOST', 'localhost'),
+            database=os.environ.get('DB_NAME', 'localmultitrader'),
+            user=os.environ.get('DB_USER', 'harman'),
+            password=os.environ.get('DB_PASSWORD', ''),
+            port=os.environ.get('DB_PORT', '5432')
+        )
         
-        # Also try to load from JSON file for additional info
-        elif os.path.exists(accounts_file):
-            print(f"📋 Loading configuration from JSON: {accounts_file}")
-            
-            with open(accounts_file, 'r') as f:
-                json_config = json.load(f)
-            
-            # Map JSON config to script config
-            if 'masterAccount' in json_config:
-                master = json_config['masterAccount']
-                config['MASTER_LOGIN'] = int(master.get('login'))
-                config['MASTER_PASSWORD'] = master.get('password')
-                config['MASTER_SERVER'] = master.get('server')
-                account_found = True
-            
-            if 'slaveAccounts' in json_config and len(json_config['slaveAccounts']) > 0:
-                slave = json_config['slaveAccounts'][0]  # Use first slave
-                config['SLAVE_LOGIN'] = int(slave.get('login'))
-                config['SLAVE_PASSWORD'] = slave.get('password')
-                config['SLAVE_SERVER'] = slave.get('server')
-                account_found = True
-            
-            print(f"✅ Loaded from JSON - Master: {config.get('MASTER_LOGIN')}, Slave: {config.get('SLAVE_LOGIN')}")
+        cursor = conn.cursor()
         
-        else:
-            print("❌ No configuration file found")
+        # Get user's active accounts
+        cursor.execute("""
+            SELECT account_login, account_password, account_server, account_is_master 
+            FROM accounts 
+            WHERE user_id = %s AND is_active = true
+            ORDER BY account_is_master DESC
+        """, (user_id,))
+        
+        accounts = cursor.fetchall()
+        
+        if not accounts:
+            print(f"❌ No active accounts found for user {user_id}")
+            return None
+        
+        # Separate master and slave accounts
+        master_account = None
+        slave_accounts = []
+        
+        for login, password, server, is_master in accounts:
+            if is_master:
+                master_account = (login, password, server)
+            else:
+                slave_accounts.append((login, password, server))
+        
+        if not master_account:
+            print(f"❌ No master account found for user {user_id}")
             return None
             
+        if not slave_accounts:
+            print(f"❌ No slave accounts found for user {user_id}")
+            return None
+        
+        # Set master account
+        config['MASTER_LOGIN'] = master_account[0]
+        config['MASTER_PASSWORD'] = master_account[1]
+        config['MASTER_SERVER'] = master_account[2]
+        
+        # Set first slave account (you can extend this for multiple slaves later)
+        config['SLAVE_LOGIN'] = slave_accounts[0][0]
+        config['SLAVE_PASSWORD'] = slave_accounts[0][1]
+        config['SLAVE_SERVER'] = slave_accounts[0][2]
+        
+        # Store all slave accounts for future use
+        config['ALL_SLAVE_ACCOUNTS'] = slave_accounts
+        
+        print(f"✅ Loaded from database - User: {user_id}")
+        print(f"🎯 Master: {config['MASTER_LOGIN']}")
+        print(f"🎯 Slaves: {len(slave_accounts)}")
+        
+        cursor.close()
+        conn.close()
+        
+        return config
+        
     except Exception as e:
-        print(f"❌ Error loading configuration: {e}")
+        print(f"❌ Error loading configuration from database: {e}")
         return None
-    
-    # Validate that we have the required account information
-    required_fields = ['MASTER_LOGIN', 'MASTER_PASSWORD', 'MASTER_SERVER', 'SLAVE_LOGIN', 'SLAVE_PASSWORD', 'SLAVE_SERVER']
-    missing_fields = [field for field in required_fields if field not in config or not config[field]]
-    
-    if missing_fields:
-        print(f"❌ Missing required account configuration: {missing_fields}")
+
+def get_user_id_from_ec2():
+    """Get the user ID from EC2 instance metadata or environment variable"""
+    try:
+        # Try to get from environment variable first
+        user_id = os.environ.get('TRADING_USER_ID')
+        if user_id:
+            return int(user_id)
+        
+        # Try to get from EC2 instance tags
+        import boto3
+        ec2 = boto3.client('ec2', region_name=os.environ.get('AWS_REGION', 'us-east-1'))
+        
+        # Get instance ID
+        response = requests.get('http://169.254.169.254/latest/meta-data/instance-id', timeout=5)
+        instance_id = response.text
+        
+        # Get instance tags
+        response = ec2.describe_instances(InstanceIds=[instance_id])
+        tags = response['Reservations'][0]['Instances'][0].get('Tags', [])
+        
+        for tag in tags:
+            if tag['Key'] == 'User':
+                return int(tag['Value'])
+        
+        print("❌ No user ID found in environment or EC2 tags")
         return None
-    
-    if not account_found:
-        print("❌ No account configuration found")
+        
+    except Exception as e:
+        print(f"❌ Error getting user ID: {e}")
         return None
-    
-    return config
 
 def send_discord_notification(message, webhook_url):
     """Send notification to Discord"""
@@ -438,20 +469,28 @@ def copy_trading_process(config):
 if __name__ == "__main__":
     print("🚀 Starting Dynamic MT5 Copy Trading...")
     
-    # Load configuration
-    config = load_configuration()
+    # Get user ID from EC2 metadata or environment
+    user_id = get_user_id_from_ec2()
+    if user_id is None:
+        print("❌ Could not determine user ID. Exiting.")
+        sys.exit(1)
+    
+    print(f"👤 Trading for user ID: {user_id}")
+    
+    # Load configuration from database
+    config = load_configuration_from_database(user_id)
     
     if config is None:
-        print("❌ No valid account configuration found.")
-        print("⏳ Waiting for account configuration to be sent from dashboard...")
+        print("❌ No valid account configuration found in database.")
+        print("⏳ Waiting for accounts to be added in dashboard...")
         
         # Wait for configuration in a loop
         while True:
             time.sleep(30)  # Check every 30 seconds
-            print("🔄 Checking for account configuration...")
-            config = load_configuration()
+            print("🔄 Checking database for account configuration...")
+            config = load_configuration_from_database(user_id)
             if config is not None:
-                print("✅ Account configuration received!")
+                print("✅ Account configuration found in database!")
                 break
     
     print(f"\n{'='*60}")
