@@ -607,6 +607,7 @@ def copy_trading_process(config):
     COPY_INTERVAL = config['COPY_INTERVAL']
     DISCORD_WEBHOOK_URL = config['DISCORD_WEBHOOK_URL']
     
+    # Initialize baseline state - track existing positions when script starts
     baseline_master_positions = {}
     baseline_initialized = False
     
@@ -614,6 +615,7 @@ def copy_trading_process(config):
         try:
             # Connect to master terminal
             if init_account(MASTER_LOGIN, MASTER_PASSWORD, MASTER_SERVER, MASTER_PATH):
+                print("✅ Connected to master")
                 master_positions = get_master_positions()
                 master_snapshot = positions_to_dict(master_positions)
                 mt5.shutdown()
@@ -624,6 +626,7 @@ def copy_trading_process(config):
 
             # Connect to slave terminal
             if init_account(SLAVE_LOGIN, SLAVE_PASSWORD, SLAVE_SERVER, SLAVE_PATH):
+                print("✅ Connected to slave")
                 slave_positions = get_master_positions()
                 slave_snapshot = positions_to_dict(slave_positions)
 
@@ -634,11 +637,27 @@ def copy_trading_process(config):
                     baseline_initialized = True
                     print(f"📊 Baseline initialized with {len(baseline_master_positions)} existing positions")
                     
+                    # Show existing positions for reference
+                    if baseline_master_positions:
+                        print("📋 Existing positions (will NOT be copied):")
+                        for pos_key in baseline_master_positions.keys():
+                            symbol, volume, order_type = pos_key
+                            print(f"   - {symbol}: {volume} lots ({'BUY' if order_type == 0 else 'SELL'})")
+                    else:
+                        print("📋 No existing positions found")
+                    
+                    # Send Discord notification about baseline initialization
+                    send_discord_notification(
+                        f"📊 Copy trading baseline initialized - {len(baseline_master_positions)} existing positions recorded",
+                        DISCORD_WEBHOOK_URL
+                    )
+                    
+                    # Continue to next iteration without copying anything
                     mt5.shutdown()
                     time.sleep(COPY_INTERVAL)
                     continue
 
-                # Find new positions
+                # Find truly new positions (positions in master that weren't in baseline)
                 new_positions = {}
                 for pos_key, master_ticket in master_snapshot.items():
                     if pos_key not in baseline_master_positions:
@@ -646,6 +665,7 @@ def copy_trading_process(config):
 
                 if new_positions:
                     print(f"🎯 Found {len(new_positions)} new positions to copy")
+                    # Copy only the new positions
                     for p in master_positions:
                         pos_key = (p.symbol, p.volume, p.type)
                         if pos_key in new_positions:
@@ -655,8 +675,11 @@ def copy_trading_process(config):
                                     f"✅ Trade copied: {p.symbol} {p.volume} lots ({'BUY' if p.type == 0 else 'SELL'})",
                                     DISCORD_WEBHOOK_URL
                                 )
+                else:
+                    print("✅ No new positions to copy")
 
-                # Update baseline
+                # Update baseline to include any new positions we just copied
+                # This prevents re-copying the same position if the script restarts
                 baseline_master_positions.update(new_positions)
                 
                 mt5.shutdown()
