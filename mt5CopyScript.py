@@ -366,9 +366,18 @@ def save_login_credentials(terminal_path, login, password, server):
 def start_mt5_terminal(path):
     """Start MT5 terminal in headless mode"""
     try:
+        # Kill any existing MT5 processes first
+        try:
+            subprocess.run(['taskkill', '/f', '/im', 'terminal64.exe'], 
+                         capture_output=True, check=False)
+            time.sleep(3)
+            print(f"🔄 Killed existing MT5 processes")
+        except:
+            pass
+        
         # Launch with portable mode and headless flags
         subprocess.Popen([path, "/portable", "/headless"])
-        time.sleep(10)  # Give MT5 more time to start in headless mode
+        time.sleep(15)  # Give MT5 more time to start in headless mode
         print(f"✅ Started MT5 terminal: {path}")
     except Exception as e:
         print(f"❌ Error starting MT5 terminal: {e}")
@@ -394,7 +403,7 @@ def wait_for_terminal_ready(terminal_path, login, password, server, max_attempts
             print(f"⚠️  Connection attempt {attempt + 1} failed: {e}")
             mt5.shutdown()
         
-        time.sleep(5)
+        time.sleep(10)  # Wait 10 seconds between attempts for fresh terminals
     
     print(f"❌ Terminal not ready after {max_attempts} attempts")
     return False
