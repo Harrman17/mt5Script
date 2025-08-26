@@ -388,21 +388,48 @@ def wait_for_terminal_ready(terminal_path, login, password, server, max_attempts
     
     for attempt in range(max_attempts):
         try:
+            print(f"🔐 Attempt {attempt + 1}: Trying to login with credentials...")
+            print(f"   Terminal: {terminal_path}")
+            print(f"   Login: {login}")
+            print(f"   Server: {server}")
+            
+            # Try to initialize with login
+            print(f"   📡 Initializing MT5 connection...")
             if mt5.initialize(path=terminal_path, login=login, password=password, server=server):
+                print(f"   ✅ MT5.initialize() succeeded!")
+                
+                # Try to get account info
+                print(f"   📊 Getting account info...")
                 account_info = mt5.account_info()
                 if account_info:
+                    print(f"   ✅ Account info retrieved successfully!")
+                    print(f"   📋 Account details:")
+                    print(f"      - Login: {account_info.login}")
+                    print(f"      - Server: {account_info.server}")
+                    print(f"      - Balance: {account_info.balance}")
+                    print(f"      - Equity: {account_info.equity}")
                     print(f"✅ Terminal ready! Account: {account_info.login}")
                     mt5.shutdown()
                     return True
                 else:
+                    print(f"   ❌ Account info is None - login may have failed")
+                    print(f"   🔍 Checking MT5 last error...")
+                    error = mt5.last_error()
+                    print(f"   📝 MT5 Error: {error}")
                     print(f"⚠️  Terminal connected but no account info (attempt {attempt + 1})")
                     mt5.shutdown()
             else:
+                print(f"   ❌ MT5.initialize() failed!")
+                error = mt5.last_error()
+                print(f"   📝 MT5 Error: {error}")
                 print(f"⚠️  Terminal not ready yet (attempt {attempt + 1})")
         except Exception as e:
+            print(f"   ❌ Exception during login attempt: {e}")
+            print(f"   🔍 Exception type: {type(e).__name__}")
             print(f"⚠️  Connection attempt {attempt + 1} failed: {e}")
             mt5.shutdown()
         
+        print(f"   ⏳ Waiting 10 seconds before next attempt...")
         time.sleep(10)  # Wait 10 seconds between attempts for fresh terminals
     
     print(f"❌ Terminal not ready after {max_attempts} attempts")
@@ -525,15 +552,32 @@ def setup_single_terminal(terminal_path, login, password, server, terminal_name)
 
 def init_account(login, password, server, terminal_path):
     """Initialize MT5 account connection"""
+    print(f"🔐 Initializing account connection...")
+    print(f"   Terminal: {terminal_path}")
+    print(f"   Login: {login}")
+    print(f"   Server: {server}")
+    
     if not mt5.initialize(path=terminal_path, login=login, password=password, server=server):
-        print(f"❌ Failed to initialize MT5 account {login}: {mt5.last_error()}")
+        error = mt5.last_error()
+        print(f"❌ Failed to initialize MT5 account {login}")
+        print(f"   📝 MT5 Error: {error}")
         return False
+    
+    print(f"   ✅ MT5.initialize() succeeded!")
     
     account_info = mt5.account_info()
     if account_info:
+        print(f"   ✅ Account info retrieved successfully!")
+        print(f"   📋 Account details:")
+        print(f"      - Login: {account_info.login}")
+        print(f"      - Server: {account_info.server}")
+        print(f"      - Balance: {account_info.balance}")
         print(f"✅ Account {login} logged in successfully")
         return True
     else:
+        print(f"   ❌ Account info is None")
+        error = mt5.last_error()
+        print(f"   📝 MT5 Error: {error}")
         print(f"❌ Account {login} connected but no account info")
         mt5.shutdown()
         return False
