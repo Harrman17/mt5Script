@@ -125,8 +125,16 @@ def load_configuration_from_database(user_id):
         config['ALL_SLAVE_ACCOUNTS'] = slave_accounts
         
         print(f"✅ Loaded from database - User: {user_id}")
-        print(f"🎯 Master: {config['MASTER_LOGIN']}")
+        print(f"🎯 Master: {config['MASTER_LOGIN']} (type: {type(config['MASTER_LOGIN'])})")
+        print(f"🎯 Slave: {config['SLAVE_LOGIN']} (type: {type(config['SLAVE_LOGIN'])})")
         print(f"🎯 Slaves: {len(slave_accounts)}")
+        
+        # Debug: Show raw database values
+        print(f"🔍 Database raw values:")
+        print(f"   Master account: {master_account}")
+        print(f"   Slave account: {slave_accounts[0]}")
+        print(f"   Master login type: {type(master_account[0])}")
+        print(f"   Slave login type: {type(slave_accounts[0][0])}")
         
         cursor.close()
         conn.close()
@@ -454,16 +462,25 @@ def wait_for_terminal_ready(terminal_path, login, password, server, max_attempts
     """Wait for terminal to be ready and connected"""
     print(f"⏳ Waiting for terminal to be ready...")
     
+    # Ensure login is an integer
+    try:
+        login_int = int(login)
+        print(f"   🔢 Login converted to integer: {login_int}")
+    except (ValueError, TypeError):
+        print(f"   ❌ ERROR: Login '{login}' cannot be converted to integer!")
+        print(f"   🔍 Login type: {type(login)}")
+        return False
+    
     for attempt in range(max_attempts):
         try:
             print(f"🔐 Attempt {attempt + 1}: Trying to login with credentials...")
             print(f"   Terminal: {terminal_path}")
-            print(f"   Login: {login}")
+            print(f"   Login: {login} (as integer: {login_int})")
             print(f"   Server: {server}")
             
             # Try to initialize with login
             print(f"   📡 Initializing MT5 connection...")
-            if mt5.initialize(path=terminal_path, login=login, password=password, server=server):
+            if mt5.initialize(path=terminal_path, login=login_int, password=password, server=server):
                 print(f"   ✅ MT5.initialize() succeeded!")
                 
                 # Try to get account info
@@ -547,7 +564,9 @@ def wait_for_terminal_ready(terminal_path, login, password, server, max_attempts
 def force_enable_autotrading_via_api(terminal_path, login, password, server):
     """Try to force enable AutoTrading via MT5 API"""
     try:
-        if mt5.initialize(path=terminal_path, login=login, password=password, server=server):
+        # Ensure login is an integer
+        login_int = int(login)
+        if mt5.initialize(path=terminal_path, login=login_int, password=password, server=server):
             # Try to get terminal info and check if we can modify settings
             terminal_info = mt5.terminal_info()
             print(f"Terminal info - Trade allowed: {terminal_info.trade_allowed}")
@@ -576,7 +595,9 @@ def force_enable_autotrading_via_api(terminal_path, login, password, server):
 def check_autotrading_status(terminal_path, login, password, server):
     """Check if AutoTrading is currently enabled"""
     try:
-        if mt5.initialize(path=terminal_path, login=login, password=password, server=server):
+        # Ensure login is an integer
+        login_int = int(login)
+        if mt5.initialize(path=terminal_path, login=login_int, password=password, server=server):
             terminal_info = mt5.terminal_info()
             mt5.shutdown()
             return terminal_info.trade_allowed
@@ -666,7 +687,16 @@ def init_account(login, password, server, terminal_path):
     print(f"   Login: {login}")
     print(f"   Server: {server}")
     
-    if not mt5.initialize(path=terminal_path, login=login, password=password, server=server):
+    # Ensure login is an integer
+    try:
+        login_int = int(login)
+        print(f"   🔢 Login converted to integer: {login_int}")
+    except (ValueError, TypeError):
+        print(f"   ❌ ERROR: Login '{login}' cannot be converted to integer!")
+        print(f"   🔍 Login type: {type(login)}")
+        return False
+    
+    if not mt5.initialize(path=terminal_path, login=login_int, password=password, server=server):
         error = mt5.last_error()
         print(f"❌ Failed to initialize MT5 account {login}")
         print(f"   📝 MT5 Error: {error}")
