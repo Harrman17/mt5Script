@@ -896,8 +896,26 @@ def copy_trading_process(config):
     baseline_master_positions = {}
     baseline_initialized = False
     
+    # Add manual baseline reset option
+    print("💡 To reset baseline and start fresh, press 'R' + Enter in the console")
+    print("💡 This will clear all existing positions and start detecting new ones")
+    
     while True:
         try:
+            # Check for manual baseline reset
+            try:
+                import msvcrt
+                if msvcrt.kbhit():
+                    key = msvcrt.getch().decode('utf-8').upper()
+                    if key == 'R':
+                        print("\n🔄 Manual baseline reset requested!")
+                        baseline_master_positions = {}
+                        baseline_initialized = False
+                        print("📊 Baseline cleared - will reinitialize on next connection")
+                        print("💡 Now open a new trade on master account to test copy trading")
+            except:
+                pass  # msvcrt not available on all systems
+            
             # Connect to master terminal
             print(f"🔍 Connecting to MASTER terminal...")
             if init_account(MASTER_LOGIN, MASTER_PASSWORD, MASTER_SERVER, MASTER_PATH):
@@ -963,6 +981,18 @@ def copy_trading_process(config):
                     time.sleep(COPY_INTERVAL)
                     continue
 
+                # Check if we need to refresh baseline (if positions changed significantly)
+                if len(master_snapshot) != len(baseline_master_positions):
+                    print(f"🔄 Position count changed: {len(baseline_master_positions)} -> {len(master_snapshot)}")
+                    print(f"🔄 Refreshing baseline to detect changes...")
+                    baseline_master_positions = master_snapshot.copy()
+                    print(f"📊 Baseline refreshed with {len(baseline_master_positions)} positions")
+                    
+                    # Continue to next iteration to let the refresh take effect
+                    mt5.shutdown()
+                    time.sleep(COPY_INTERVAL)
+                    continue
+
                 print(f"🔍 Checking for new positions...")
                 print(f"   Current master positions: {len(master_snapshot)}")
                 print(f"   Baseline positions: {len(baseline_master_positions)}")
@@ -972,6 +1002,17 @@ def copy_trading_process(config):
                 new_positions = {}
                 print(f"🔍 Analyzing position changes...")
                 
+                # Debug: Show what's in the baseline
+                print(f"   📊 Baseline contains {len(baseline_master_positions)} positions:")
+                for baseline_key in baseline_master_positions.keys():
+                    symbol, volume, order_type = baseline_key
+                    print(f"      - {symbol}: {volume} lots ({'BUY' if order_type == 0 else 'SELL'})")
+                
+                print(f"   📊 Current master has {len(master_snapshot)} positions:")
+                for current_key in master_snapshot.keys():
+                    symbol, volume, order_type = current_key
+                    print(f"      - {symbol}: {volume} lots ({'BUY' if order_type == 0 else 'SELL'})")
+                
                 for pos_key, master_ticket in master_snapshot.items():
                     symbol, volume, order_type = pos_key
                     if pos_key not in baseline_master_positions:
@@ -979,6 +1020,7 @@ def copy_trading_process(config):
                         print(f"   🆕 NEW position detected: {symbol} {volume} lots ({'BUY' if order_type == 0 else 'SELL'})")
                     else:
                         print(f"   ✅ Existing position: {symbol} {volume} lots ({'BUY' if order_type == 0 else 'SELL'})")
+                        print(f"      🔍 This position was already in baseline")
 
                 if new_positions:
                     print(f"🎯 Found {len(new_positions)} new positions to copy")
@@ -998,7 +1040,12 @@ def copy_trading_process(config):
 
                 # Update baseline to include any new positions we just copied
                 # This prevents re-copying the same position if the script restarts
-                baseline_master_positions.update(new_positions)
+                if new_positions:
+                    print(f"🔄 Updating baseline with {len(new_positions)} new positions...")
+                    baseline_master_positions.update(new_positions)
+                    print(f"📊 Baseline now contains {len(baseline_master_positions)} positions")
+                else:
+                    print(f"📊 Baseline unchanged - no new positions to add")
                 
                 mt5.shutdown()
             else:
