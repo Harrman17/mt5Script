@@ -17,6 +17,16 @@ import json
 import psycopg2
 from datetime import datetime
 
+# Try to import win32gui for window management (optional)
+try:
+    import win32gui
+    import win32con
+    import win32api
+    WIN32_AVAILABLE = True
+except ImportError:
+    WIN32_AVAILABLE = False
+    print("⚠️  win32gui not available - cannot force login dialogs")
+
 # Default paths and settings (non-account specific)
 DEFAULT_CONFIG = {
     "MASTER_PATH": r"C:\Users\Administrator\Desktop\terminals\master\terminal64.exe",
@@ -331,14 +341,14 @@ def enable_algo_trading_via_registry(terminal_path):
         return False
 
 def save_login_credentials(terminal_path, login, password, server):
-    """Save login credentials in MT5 terminal"""
+    """Save login credentials in MT5 terminal with comprehensive auto-login setup"""
     try:
         terminal_dir = os.path.dirname(terminal_path)
         config_dir = os.path.join(terminal_dir, "config")
         os.makedirs(config_dir, exist_ok=True)
         
+        # 1. Create/update accounts.ini
         accounts_path = os.path.join(config_dir, "accounts.ini")
-        
         config = configparser.ConfigParser()
         if os.path.exists(accounts_path):
             config.read(accounts_path, encoding='utf-8')
@@ -352,11 +362,65 @@ def save_login_credentials(terminal_path, login, password, server):
         config[account_section]['Server'] = server
         config[account_section]['SavePassword'] = '1'
         config[account_section]['AutoLogin'] = '1'
+        config[account_section]['AutoConnect'] = '1'
+        config[account_section]['RememberPassword'] = '1'
         
         with open(accounts_path, 'w', encoding='utf-8') as configfile:
             config.write(configfile)
         
-        print(f"✅ Saved login credentials for account {login}")
+        # 2. Create/update common.ini with auto-login settings
+        common_path = os.path.join(config_dir, "common.ini")
+        common_config = configparser.ConfigParser()
+        if os.path.exists(common_path):
+            common_config.read(common_path, encoding='utf-8')
+        
+        if 'Terminal' not in common_config:
+            common_config['Terminal'] = {}
+        
+        common_config['Terminal']['AutoLogin'] = '1'
+        common_config['Terminal']['AutoConnect'] = '1'
+        common_config['Terminal']['RememberPassword'] = '1'
+        common_config['Terminal']['SavePassword'] = '1'
+        common_config['Terminal']['AllowAutoLogin'] = '1'
+        
+        with open(common_path, 'w', encoding='utf-8') as configfile:
+            common_config.write(configfile)
+        
+        # 3. Create/update terminal.ini
+        terminal_path_config = os.path.join(config_dir, "terminal.ini")
+        terminal_config = configparser.ConfigParser()
+        if os.path.exists(terminal_path_config):
+            terminal_config.read(terminal_path_config, encoding='utf-8')
+        
+        if 'Terminal' not in terminal_config:
+            terminal_config['Terminal'] = {}
+        
+        terminal_config['Terminal']['AutoLogin'] = '1'
+        terminal_config['Terminal']['AutoConnect'] = '1'
+        terminal_config['Terminal']['RememberPassword'] = '1'
+        terminal_config['Terminal']['SavePassword'] = '1'
+        terminal_config['Terminal']['AllowAutoLogin'] = '1'
+        
+        with open(terminal_path_config, 'w', encoding='utf-8') as configfile:
+            terminal_config.write(configfile)
+        
+        # 4. Create/update profiles.ini
+        profiles_path = os.path.join(config_dir, "profiles.ini")
+        profiles_config = configparser.ConfigParser()
+        if os.path.exists(profiles_path):
+            profiles_config.read(profiles_path, encoding='utf-8')
+        
+        if 'Profiles' not in profiles_config:
+            profiles_config['Profiles'] = {}
+        
+        profiles_config['Profiles']['Default'] = 'Default'
+        profiles_config['Profiles']['AutoLogin'] = '1'
+        
+        with open(profiles_path, 'w', encoding='utf-8') as configfile:
+            profiles_config.write(configfile)
+        
+        print(f"✅ Saved comprehensive login credentials for account {login}")
+        print(f"   📁 Created/updated: accounts.ini, common.ini, terminal.ini, profiles.ini")
         return True
         
     except Exception as e:
@@ -364,21 +428,25 @@ def save_login_credentials(terminal_path, login, password, server):
         return False
 
 def start_mt5_terminal(path):
-    """Start MT5 terminal in headless mode"""
+    """Start MT5 terminal in headless mode with auto-login flags"""
     try:
         # Kill any existing MT5 processes first
         try:
             subprocess.run(['taskkill', '/f', '/im', 'terminal64.exe'], 
                          capture_output=True, check=False)
-            time.sleep(3)
+            time.sleep(5)
             print(f"🔄 Killed existing MT5 processes")
         except:
             pass
         
-        # Launch with portable mode and headless flags
-        subprocess.Popen([path, "/portable", "/headless"])
-        time.sleep(15)  # Give MT5 more time to start in headless mode
-        print(f"✅ Started MT5 terminal: {path}")
+        # Launch with comprehensive flags for auto-login
+        # /portable: Run in portable mode
+        # /headless: Run without GUI
+        # /login: Auto-login with saved credentials
+        # /autotrading: Enable auto-trading
+        subprocess.Popen([path, "/portable", "/headless", "/login", "/autotrading"])
+        time.sleep(20)  # Give MT5 more time to start and auto-login
+        print(f"✅ Started MT5 terminal with auto-login flags: {path}")
     except Exception as e:
         print(f"❌ Error starting MT5 terminal: {e}")
 
@@ -423,6 +491,47 @@ def wait_for_terminal_ready(terminal_path, login, password, server, max_attempts
                 error = mt5.last_error()
                 print(f"   📝 MT5 Error: {error}")
                 print(f"⚠️  Terminal not ready yet (attempt {attempt + 1})")
+                
+                # If this is a fresh terminal, the login dialog might be blocking
+                if attempt == 0:
+                    print(f"   💡 This appears to be a fresh terminal - login dialog may be blocking")
+                    print(f"   💡 Checking if we can force the login process...")
+                    
+                    # Try to send Enter key to the terminal process to accept login
+                    try:
+                        # Find MT5 process and try to send Enter key
+                        result = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq terminal64.exe'], 
+                                             capture_output=True, text=True, check=False)
+                        if 'terminal64.exe' in result.stdout:
+                            print(f"   🔍 MT5 process is running, attempting to force login...")
+                            # Try to send Enter key to the active window
+                            if WIN32_AVAILABLE:
+                                try:
+                                    # Find MT5 window and send Enter
+                                    def enum_windows_callback(hwnd, windows):
+                                        if win32gui.IsWindowVisible(hwnd):
+                                            window_text = win32gui.GetWindowText(hwnd)
+                                            if 'MetaTrader' in window_text or 'Login' in window_text:
+                                                windows.append(hwnd)
+                                        return True
+                                    
+                                    windows = []
+                                    win32gui.EnumWindows(enum_windows_callback, windows)
+                                    
+                                    if windows:
+                                        print(f"   🎯 Found MT5 window, sending Enter key...")
+                                        win32gui.SetForegroundWindow(windows[0])
+                                        win32api.keybd_event(win32con.VK_RETURN, 0, 0, 0)
+                                        win32api.keybd_event(win32con.VK_RETURN, 0, win32con.KEYEVENTF_KEYUP, 0)
+                                        time.sleep(5)  # Wait for login to process
+                                    else:
+                                        print(f"   ⚠️  No MT5 window found")
+                                except Exception as e:
+                                    print(f"   ⚠️  Could not force login: {e}")
+                            else:
+                                print(f"   ⚠️  win32gui not available, cannot force login")
+                    except Exception as e:
+                        print(f"   ⚠️  Could not check MT5 process: {e}")
         except Exception as e:
             print(f"   ❌ Exception during login attempt: {e}")
             print(f"   🔍 Exception type: {type(e).__name__}")
