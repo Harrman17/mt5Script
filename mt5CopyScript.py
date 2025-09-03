@@ -982,8 +982,35 @@ def copy_trading_process(config):
                     continue
 
                 # Check if we need to refresh baseline (if positions changed significantly)
-                if len(master_snapshot) != len(baseline_master_positions):
-                    print(f"🔄 Position count changed: {len(baseline_master_positions)} -> {len(master_snapshot)}")
+                position_count_changed = len(master_snapshot) != len(baseline_master_positions)
+                
+                # Also check if any positions are different (even if count is the same)
+                positions_different = False
+                if not position_count_changed and len(master_snapshot) > 0:
+                    # Check if any current positions are not in baseline
+                    for pos_key in master_snapshot.keys():
+                        if pos_key not in baseline_master_positions:
+                            positions_different = True
+                            break
+                
+                # Additional check: if positions look the same but might be new trades
+                # This handles cases where MT5 merges positions or reuses tickets
+                if not position_count_changed and not positions_different and len(master_snapshot) > 0:
+                    # Check if any tickets are different (indicating new trades)
+                    for current_key, current_ticket in master_snapshot.items():
+                        if current_key in baseline_master_positions:
+                            baseline_ticket = baseline_master_positions[current_key]
+                            if baseline_ticket != current_ticket:
+                                positions_different = True
+                                print(f"🔄 Ticket changed for {current_key[0]}: {baseline_ticket} -> {current_ticket}")
+                                break
+                
+                if position_count_changed or positions_different:
+                    if position_count_changed:
+                        print(f"🔄 Position count changed: {len(baseline_master_positions)} -> {len(master_snapshot)}")
+                    if positions_different:
+                        print(f"🔄 Position content changed (same count, different positions)")
+                    
                     print(f"🔄 Refreshing baseline to detect changes...")
                     baseline_master_positions = master_snapshot.copy()
                     print(f"📊 Baseline refreshed with {len(baseline_master_positions)} positions")
@@ -1004,14 +1031,26 @@ def copy_trading_process(config):
                 
                 # Debug: Show what's in the baseline
                 print(f"   📊 Baseline contains {len(baseline_master_positions)} positions:")
-                for baseline_key in baseline_master_positions.keys():
+                for baseline_key, baseline_ticket in baseline_master_positions.items():
                     symbol, volume, order_type = baseline_key
-                    print(f"      - {symbol}: {volume} lots ({'BUY' if order_type == 0 else 'SELL'})")
+                    print(f"      - {symbol}: {volume} lots ({'BUY' if order_type == 0 else 'SELL'}) [Ticket: {baseline_ticket}]")
                 
                 print(f"   📊 Current master has {len(master_snapshot)} positions:")
-                for current_key in master_snapshot.keys():
+                for current_key, current_ticket in master_snapshot.items():
                     symbol, volume, order_type = current_key
-                    print(f"      - {symbol}: {volume} lots ({'BUY' if order_type == 0 else 'SELL'})")
+                    print(f"      - {symbol}: {volume} lots ({'BUY' if order_type == 0 else 'SELL'}) [Ticket: {current_ticket}]")
+                
+                # Show detailed position comparison
+                print(f"   🔍 Detailed position comparison:")
+                for current_key, current_ticket in master_snapshot.items():
+                    if current_key in baseline_master_positions:
+                        baseline_ticket = baseline_master_positions[current_key]
+                        if baseline_ticket == current_ticket:
+                            print(f"      ✅ {current_key[0]}: {current_key[1]} lots - Same ticket ({current_ticket})")
+                        else:
+                            print(f"      🔄 {current_key[0]}: {current_key[1]} lots - Different ticket: {baseline_ticket} -> {current_ticket}")
+                    else:
+                        print(f"      🆕 {current_key[0]}: {current_key[1]} lots - NEW position (not in baseline)")
                 
                 for pos_key, master_ticket in master_snapshot.items():
                     symbol, volume, order_type = pos_key
