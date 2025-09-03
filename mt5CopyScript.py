@@ -355,80 +355,130 @@ def save_login_credentials(terminal_path, login, password, server):
         config_dir = os.path.join(terminal_dir, "config")
         os.makedirs(config_dir, exist_ok=True)
         
+        # Also try the common MT5 config location
+        common_mt5_config = os.path.join(os.path.expanduser("~"), "AppData", "Roaming", "MetaQuotes", "Terminal")
+        if os.path.exists(common_mt5_config):
+            print(f"   📁 Found common MT5 config directory: {common_mt5_config}")
+            # Create config files in both locations
+            common_config_files = [config_dir, common_mt5_config]
+        else:
+            common_config_files = [config_dir]
+        
+        print(f"   📁 Creating config files in: {config_dir}")
+        if len(common_config_files) > 1:
+            print(f"   📁 Also creating in: {common_mt5_config}")
+        
         # 1. Create/update accounts.ini
-        accounts_path = os.path.join(config_dir, "accounts.ini")
-        config = configparser.ConfigParser()
-        if os.path.exists(accounts_path):
-            config.read(accounts_path, encoding='utf-8')
-        
-        account_section = f"Account{login}"
-        if account_section not in config:
-            config[account_section] = {}
-        
-        config[account_section]['Login'] = str(login)
-        config[account_section]['Password'] = password
-        config[account_section]['Server'] = server
-        config[account_section]['SavePassword'] = '1'
-        config[account_section]['AutoLogin'] = '1'
-        config[account_section]['AutoConnect'] = '1'
-        config[account_section]['RememberPassword'] = '1'
-        
-        with open(accounts_path, 'w', encoding='utf-8') as configfile:
-            config.write(configfile)
+        for config_location in common_config_files:
+            accounts_path = os.path.join(config_location, "accounts.ini")
+            config = configparser.ConfigParser()
+            if os.path.exists(accounts_path):
+                config.read(accounts_path, encoding='utf-8')
+            
+            account_section = f"Account{login}"
+            if account_section not in config:
+                config[account_section] = {}
+            
+            config[account_section]['Login'] = str(login)
+            config[account_section]['Password'] = password
+            config[account_section]['Server'] = server
+            config[account_section]['SavePassword'] = '1'
+            config[account_section]['AutoLogin'] = '1'
+            config[account_section]['AutoConnect'] = '1'
+            config[account_section]['RememberPassword'] = '1'
+            
+            with open(accounts_path, 'w', encoding='utf-8') as configfile:
+                config.write(configfile)
+            
+            print(f"   ✅ Created accounts.ini in: {config_location}")
         
         # 2. Create/update common.ini with auto-login settings
-        common_path = os.path.join(config_dir, "common.ini")
-        common_config = configparser.ConfigParser()
-        if os.path.exists(common_path):
-            common_config.read(common_path, encoding='utf-8')
-        
-        if 'Terminal' not in common_config:
-            common_config['Terminal'] = {}
-        
-        common_config['Terminal']['AutoLogin'] = '1'
-        common_config['Terminal']['AutoConnect'] = '1'
-        common_config['Terminal']['RememberPassword'] = '1'
-        common_config['Terminal']['SavePassword'] = '1'
-        common_config['Terminal']['AllowAutoLogin'] = '1'
-        
-        with open(common_path, 'w', encoding='utf-8') as configfile:
-            common_config.write(configfile)
+        for config_location in common_config_files:
+            common_path = os.path.join(config_location, "common.ini")
+            common_config = configparser.ConfigParser()
+            if os.path.exists(common_path):
+                common_config.read(common_path, encoding='utf-8')
+            
+            if 'Terminal' not in common_config:
+                common_config['Terminal'] = {}
+            
+            common_config['Terminal']['AutoLogin'] = '1'
+            common_config['Terminal']['AutoConnect'] = '1'
+            common_config['Terminal']['RememberPassword'] = '1'
+            common_config['Terminal']['SavePassword'] = '1'
+            common_config['Terminal']['AllowAutoLogin'] = '1'
+            
+            with open(common_path, 'w', encoding='utf-8') as configfile:
+                common_config.write(configfile)
+            
+            print(f"   ✅ Created common.ini in: {config_location}")
         
         # 3. Create/update terminal.ini
-        terminal_path_config = os.path.join(config_dir, "terminal.ini")
-        terminal_config = configparser.ConfigParser()
-        if os.path.exists(terminal_path_config):
-            terminal_config.read(terminal_path_config, encoding='utf-8')
-        
-        if 'Terminal' not in terminal_config:
-            terminal_config['Terminal'] = {}
-        
-        terminal_config['Terminal']['AutoLogin'] = '1'
-        terminal_config['Terminal']['AutoConnect'] = '1'
-        terminal_config['Terminal']['RememberPassword'] = '1'
-        terminal_config['Terminal']['SavePassword'] = '1'
-        terminal_config['Terminal']['AllowAutoLogin'] = '1'
-        
-        with open(terminal_path_config, 'w', encoding='utf-8') as configfile:
-            terminal_config.write(configfile)
+        for config_location in common_config_files:
+            terminal_path_config = os.path.join(config_location, "terminal.ini")
+            terminal_config = configparser.ConfigParser()
+            if os.path.exists(terminal_path_config):
+                terminal_config.read(terminal_path_config, encoding='utf-8')
+            
+            if 'Terminal' not in terminal_config:
+                terminal_config['Terminal'] = {}
+            
+            terminal_config['Terminal']['AutoLogin'] = '1'
+            terminal_config['Terminal']['AutoConnect'] = '1'
+            terminal_config['Terminal']['RememberPassword'] = '1'
+            terminal_config['Terminal']['SavePassword'] = '1'
+            terminal_config['Terminal']['AllowAutoLogin'] = '1'
+            
+            with open(terminal_path_config, 'w', encoding='utf-8') as configfile:
+                terminal_config.write(configfile)
+            
+            print(f"   ✅ Created terminal.ini in: {config_location}")
         
         # 4. Create/update profiles.ini
-        profiles_path = os.path.join(config_dir, "profiles.ini")
-        profiles_config = configparser.ConfigParser()
-        if os.path.exists(profiles_path):
-            profiles_config.read(profiles_path, encoding='utf-8')
-        
-        if 'Profiles' not in profiles_config:
-            profiles_config['Profiles'] = {}
-        
-        profiles_config['Profiles']['Default'] = 'Default'
-        profiles_config['Profiles']['AutoLogin'] = '1'
-        
-        with open(profiles_path, 'w', encoding='utf-8') as configfile:
-            profiles_config.write(configfile)
+        for config_location in common_config_files:
+            profiles_path = os.path.join(config_location, "profiles.ini")
+            profiles_config = configparser.ConfigParser()
+            if os.path.exists(profiles_path):
+                profiles_config.read(profiles_path, encoding='utf-8')
+            
+            if 'Profiles' not in profiles_config:
+                profiles_config['Profiles'] = {}
+            
+            profiles_config['Profiles']['Default'] = 'Default'
+            profiles_config['Profiles']['AutoLogin'] = '1'
+            
+            with open(profiles_path, 'w', encoding='utf-8') as configfile:
+                profiles_config.write(configfile)
+            
+            print(f"   ✅ Created profiles.ini in: {config_location}")
         
         print(f"✅ Saved comprehensive login credentials for account {login}")
         print(f"   📁 Created/updated: accounts.ini, common.ini, terminal.ini, profiles.ini")
+        
+        # Verify files were created in all locations
+        for config_location in common_config_files:
+            print(f"   📁 Checking config files in: {config_location}")
+            files_to_check = [
+                os.path.join(config_location, "accounts.ini"),
+                os.path.join(config_location, "common.ini"),
+                os.path.join(config_location, "terminal.ini"),
+                os.path.join(config_location, "profiles.ini")
+            ]
+            
+            for file_path in files_to_check:
+                if os.path.exists(file_path):
+                    print(f"      ✅ {os.path.basename(file_path)} exists")
+                    # Show file contents for debugging
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                            print(f"      📄 {os.path.basename(file_path)} content:")
+                            print(f"         {content.strip()}")
+                    except Exception as e:
+                        print(f"      ❌ Could not read {os.path.basename(file_path)}: {e}")
+                else:
+                    print(f"      ❌ {os.path.basename(file_path)} NOT created!")
+        
         return True
         
     except Exception as e:
@@ -570,16 +620,15 @@ def force_enable_autotrading_via_api(terminal_path, login, password, server):
             # Try to get terminal info and check if we can modify settings
             terminal_info = mt5.terminal_info()
             print(f"Terminal info - Trade allowed: {terminal_info.trade_allowed}")
-            print(f"Terminal info - Trade mode: {terminal_info.trade_mode}")
             print(f"Terminal info - Connected: {terminal_info.connected}")
-            print(f"Terminal info - Trade allowed: {terminal_info.trade_allowed}")
             
             # Try to get account info
             account_info = mt5.account_info()
             if account_info:
                 print(f"Account info - Trade allowed: {account_info.trade_allowed}")
-                print(f"Account info - Trade mode: {account_info.trade_mode}")
                 print(f"Account info - Trade expert: {account_info.trade_expert}")
+                print(f"Account info - Balance: {account_info.balance}")
+                print(f"Account info - Equity: {account_info.equity}")
             
             mt5.shutdown()
             return True
@@ -632,6 +681,22 @@ def setup_single_terminal(terminal_path, login, password, server, terminal_name)
         # Step 4: Try to force enable AutoTrading via API
         print(f"🔧 Step 4: Attempting to force enable AutoTrading for {terminal_name}...")
         force_enable_autotrading_via_api(terminal_path, login, password, server)
+        
+        # Step 4.5: Try to restart terminal to apply new config files
+        print(f"🔄 Step 4.5: Restarting terminal to apply new AutoTrading config...")
+        try:
+            # Kill existing process
+            subprocess.run(['taskkill', '/f', '/im', 'terminal64.exe'], 
+                         capture_output=True, check=False)
+            time.sleep(5)
+            
+            # Restart with all flags
+            subprocess.Popen([terminal_path, "/portable", "/headless", "/login", "/autotrading"])
+            time.sleep(20)  # Give time for restart and config application
+            
+            print(f"✅ Terminal restarted with new config")
+        except Exception as e:
+            print(f"⚠️  Could not restart terminal: {e}")
         
         # Step 5: Verify AutoTrading is enabled
         print(f"✅ Step 5: Verifying AutoTrading for {terminal_name}...")
@@ -750,9 +815,32 @@ def copy_position_to_slave(position):
     volume = position.volume
     order_type = position.type
     
+    print(f"🔍 Attempting to copy position to slave...")
+    print(f"   Symbol: {symbol}")
+    print(f"   Volume: {volume}")
+    print(f"   Type: {'BUY' if order_type == 0 else 'SELL'}")
+    
+    # Check if we can get price info
     price = get_safe_tick_price(symbol, order_type)
     if price is None:
         print(f"❌ Cannot get price for {symbol}, skipping trade")
+        return False
+    
+    print(f"   Price: {price}")
+
+    # Check if we can actually trade on this account
+    terminal_info = mt5.terminal_info()
+    account_info = mt5.account_info()
+    
+    print(f"   Terminal trade allowed: {terminal_info.trade_allowed}")
+    print(f"   Account trade allowed: {account_info.trade_allowed if account_info else 'N/A'}")
+    
+    if not terminal_info.trade_allowed:
+        print(f"❌ Terminal trading is not allowed")
+        return False
+    
+    if account_info and not account_info.trade_allowed:
+        print(f"❌ Account trading is not allowed")
         return False
 
     request = { 
@@ -768,12 +856,17 @@ def copy_position_to_slave(position):
         "type_filling": mt5.ORDER_FILLING_FOK,
     }
 
+    print(f"   📤 Sending trade request...")
     result = mt5.order_send(request)
+    
     if result.retcode != mt5.TRADE_RETCODE_DONE:
         print(f"❌ Trade failed: retcode={result.retcode}, message: {result.comment}")
+        print(f"   🔍 Full result: {result}")
         return False
     else:
-        print(f"✅ Trade copied: {symbol}, {volume} lots, {'BUY' if order_type == 0 else 'SELL'}")
+        print(f"✅ Trade copied successfully!")
+        print(f"   📋 Trade details: {symbol}, {volume} lots, {'BUY' if order_type == 0 else 'SELL'}")
+        print(f"   🎫 Ticket: {result.order}")
         return True
 
 def positions_to_dict(positions):
@@ -806,10 +899,20 @@ def copy_trading_process(config):
     while True:
         try:
             # Connect to master terminal
+            print(f"🔍 Connecting to MASTER terminal...")
             if init_account(MASTER_LOGIN, MASTER_PASSWORD, MASTER_SERVER, MASTER_PATH):
                 print("✅ Connected to master")
                 master_positions = get_master_positions()
+                print(f"📊 Master positions: {len(master_positions) if master_positions else 0}")
+                if master_positions:
+                    print("📋 Master positions details:")
+                    for pos in master_positions:
+                        print(f"   - {pos.symbol}: {pos.volume} lots ({'BUY' if pos.type == 0 else 'SELL'}) - Ticket: {pos.ticket}")
+                else:
+                    print("📋 No master positions found")
+                
                 master_snapshot = positions_to_dict(master_positions)
+                print(f"📊 Master snapshot: {len(master_snapshot)} positions")
                 mt5.shutdown()
             else:
                 print("❌ Failed to connect to master, retrying...")
@@ -817,10 +920,20 @@ def copy_trading_process(config):
                 continue
 
             # Connect to slave terminal
+            print(f"🔍 Connecting to SLAVE terminal...")
             if init_account(SLAVE_LOGIN, SLAVE_PASSWORD, SLAVE_SERVER, SLAVE_PATH):
                 print("✅ Connected to slave")
                 slave_positions = get_master_positions()
+                print(f"📊 Slave positions: {len(slave_positions) if slave_positions else 0}")
+                if slave_positions:
+                    print("📋 Slave positions details:")
+                    for pos in slave_positions:
+                        print(f"   - {pos.symbol}: {pos.volume} lots ({'BUY' if pos.type == 0 else 'SELL'}) - Ticket: {pos.ticket}")
+                else:
+                    print("📋 No slave positions found")
+                
                 slave_snapshot = positions_to_dict(slave_positions)
+                print(f"📊 Slave snapshot: {len(slave_snapshot)} positions")
 
                 # Initialize baseline on first successful connection
                 if not baseline_initialized:
@@ -844,16 +957,28 @@ def copy_trading_process(config):
                         DISCORD_WEBHOOK_URL
                     )
                     
+                    print("🔄 Baseline initialized - waiting for new positions...")
                     # Continue to next iteration without copying anything
                     mt5.shutdown()
                     time.sleep(COPY_INTERVAL)
                     continue
 
+                print(f"🔍 Checking for new positions...")
+                print(f"   Current master positions: {len(master_snapshot)}")
+                print(f"   Baseline positions: {len(baseline_master_positions)}")
+                print(f"   Current slave positions: {len(slave_snapshot)}")
+
                 # Find truly new positions (positions in master that weren't in baseline)
                 new_positions = {}
+                print(f"🔍 Analyzing position changes...")
+                
                 for pos_key, master_ticket in master_snapshot.items():
+                    symbol, volume, order_type = pos_key
                     if pos_key not in baseline_master_positions:
                         new_positions[pos_key] = master_ticket
+                        print(f"   🆕 NEW position detected: {symbol} {volume} lots ({'BUY' if order_type == 0 else 'SELL'})")
+                    else:
+                        print(f"   ✅ Existing position: {symbol} {volume} lots ({'BUY' if order_type == 0 else 'SELL'})")
 
                 if new_positions:
                     print(f"🎯 Found {len(new_positions)} new positions to copy")
@@ -869,6 +994,7 @@ def copy_trading_process(config):
                                 )
                 else:
                     print("✅ No new positions to copy")
+                    print("   💡 This means all current master positions were already in the baseline")
 
                 # Update baseline to include any new positions we just copied
                 # This prevents re-copying the same position if the script restarts
